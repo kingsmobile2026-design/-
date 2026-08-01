@@ -1,29 +1,11 @@
 -- =============================================================================
--- [Gravel.cc x 끄글 매크로] 통합 제어 엔진 (로딩 화면 제거 버전)
+-- [Gravel.cc x 끄글 매크로] 통합 제어 엔진 (최종 호환성 안정화 버전)
 -- =============================================================================
 
--- [1] 브라우저 직접 접속 및 후킹 방지 (Anti-Tampering & Environment Guard)
+-- [1] 브라우저 직접 접속 차단 및 실행기 환경 검사 완화
 local isRobloxEnv = pcall(function() return game:GetService("CoreGui") end)
-if not isRobloxEnv or not syn and not PROTOSCREW and not identifyexecutor and not game:GetService("RunService"):IsClient() then
-    -- 일반 브라우저로 링크를 열었을 때 보여줄 가짜 텍스트
-    error([[
-=============================================================================
-[Gravel.cc Security Shield] Access Denied
-=============================================================================
-Error Code: 403 Forbidden (Unauthorized Web Request)
-Description: This script is protected by Gravel.cc Whitelisting Engine.
-Direct URL access or code inspection from standard browsers is strictly prohibited.
-Please execute this script securely inside a valid Roblox exploit client.
-=============================================================================
-    ]])
-end
-
--- 핵심 함수 후킹(Hooking) 변조 검사
-local protectedGetGenV = getgenv or function() return _G end
-local originalHttpGet = game.HttpGet
-if not originalHttpGet or tostring(originalHttpGet):find("function") == nil then
-    game:Shutdown()
-    return
+if not isRobloxEnv and not game:GetService("RunService"):IsClient() then
+    error("Unauthorized Web Request")
 end
 
 local Players = game:GetService("Players")
@@ -59,7 +41,7 @@ local currentTypeSession = 0
 
 local urls = {
     ilikedisui = "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua",
-    dictUrl = "https://raw.githubusercontent.com/kingsmobile2026-design/--/refs/heads/main/korean%20wordDB.txt",
+    dictUrl = "https://raw.githubusercontent.com/kingsmobile2026-design/--/refs/heads/main/%EB%81%84%EA%B8%80_%EB%8B%A8%EC%96%B4%20%EB%AA%A9%EB%A1%9D_20260731210345.txt",
     dueumUrl = "https://gist.githubusercontent.com/GUMI2029/a98de0291fe638cc37bd6125edc71aac/raw/dueum_map.json",
     whitelistUrl = "https://raw.githubusercontent.com/kingsmobile2026-design/000/refs/heads/main/%ED%85%8C%EC%8A%A4%ED%8A%B8"
 }
@@ -83,16 +65,24 @@ local DoubleJongseiIndex = { [3] = true, [5] = true, [6] = true, [9] = true, [10
 local DoubleChoseongIndex = { [1] = true, [4] = true, [8] = true, [10] = true, [13] = true }
 
 local function downloadData(url) 
-    local ok, res = pcall(function() return originalHttpGet(game, url) end) 
+    local ok, res = pcall(function() return game:HttpGet(url) end) 
     return ok and res or nil 
 end
 
+-- [★ PolSec 키 시스템 완벽 연동 패치]
 local function checkWhitelistValid()
+    local pKey = _G.Script_key or _G.script_key or Script_key or script_key
+    if pKey and pKey ~= "%K".."EY%" and pKey ~= "" then
+        UserRank = "Premium"
+        return true
+    end
+
     local whiteRaw = downloadData(urls.whitelistUrl)
     if whiteRaw and whiteRaw:find(tostring(_lp.UserId)) then
         UserRank = "Premium"
         return true
     end
+    
     UserRank = "Normal"
     return true 
 end
@@ -105,7 +95,7 @@ local function showPremiumAlert()
     AlertLabel.Size = UDim2.new(1, 0, 0, 50)
     AlertLabel.Position = UDim2.new(0, 0, 0.45, 0)
     AlertLabel.BackgroundTransparency = 1
-    AlertLabel.Text = "프리미엄 필요 (유저 권한 없음)"
+    AlertLabel.Text = "프리미엄 권한이 필요합니다."
     AlertLabel.TextColor3 = Color3.fromRGB(255, 30, 30)
     AlertLabel.Font = Enum.Font.GothamBold
     AlertLabel.TextSize = 32
@@ -115,7 +105,7 @@ local function showPremiumAlert()
 end
 
 -- =============================================================================
--- [1] 자모 해체 및 조합 타이핑 상태 머신 인코더 엔진
+-- [2] 자모 해체 및 조합 타이핑 상태 머신 인코더 엔진
 -- =============================================================================
 local SBASE, VCOUNT, TCOUNT = 0xAC00, 21, 28
 local NCOUNT, SCOUNT = VCOUNT * TCOUNT, 19 * VCOUNT * TCOUNT
@@ -203,7 +193,7 @@ local function buildTypeStates(word)
 end
 
 -- =============================================================================
--- [2] 사전 데이터 및 기타 보조 함수 정의
+-- [3] 사전 데이터 및 기타 보조 함수 정의
 -- =============================================================================
 local WordDB = {}
 local MainDictMap = {} 
@@ -305,10 +295,10 @@ local function sendWordToGame(word)
 end
 
 -- =============================================================================
--- [3] 메인 UI 프레임워크 초기화 (WindUI)
+-- [4] 메인 UI 프레임워크 초기화 (WindUI)
 -- =============================================================================
 local function initializeWindUIWindow()
-    local WindUI = loadstring(originalHttpGet(game, urls.ilikedisui))()
+    local WindUI = loadstring(game:HttpGet(urls.ilikedisui))()
     
     local Window = WindUI:CreateWindow({
         Title = "Gravel.cc [" .. UserRank .. "]",
@@ -742,7 +732,7 @@ local function initializeWindUIWindow()
 
     OthersTab:Toggle({
         Title = "오토팜 윈도우 표시 (ON/OFF)",
-        Desc = "켜면 화면에 오토팜 컨트롤 위젯이 나타나고, 끄면 숨겨집니다. (프리미엄 전용)",
+        Desc = "켜면 화면에 오토팜 컨트롤 위젯이 나타나고, 끄면 숨겨집니다.",
         Value = false,
         Callback = function(v)
             if UserRank ~= "Premium" then showPremiumAlert()
@@ -778,7 +768,7 @@ local function initializeWindUIWindow()
     })
 
     -- =========================================================================
-    -- [★ 관전 팁 감지 및 제시어 자동 동기화 & 인게임 텍스트박스 자동 입력 엔진]
+    -- [제시어 자동 동기화 엔진]
     -- =========================================================================
     task.spawn(function()
         local function processFoundLetter(ch)
@@ -794,9 +784,7 @@ local function initializeWindUIWindow()
             
             local gameTextBox = forceLoadGameTextBox()
             if gameTextBox then
-                pcall(function()
-                    gameTextBox.Text = _lt
-                end)
+                pcall(function() gameTextBox.Text = _lt end)
             end
 
             updateFilteredWordsView()
@@ -874,40 +862,40 @@ local function initializeWindUIWindow()
 end
 
 -- =============================================================================
--- [최종 구동 게이트 (로딩 화면 제거 및 백그라운드 데이터 다운로드 후 즉시 실행)]
+-- [최종 구동 게이트 (순수 비동기 실행 구조)]
 -- =============================================================================
-if checkWhitelistValid() then
-    task.spawn(function()
-        local rawDueum = downloadData(urls.dueumUrl)
-        if rawDueum then
-            pcall(function()
-                local decoded = HttpService:JSONDecode(rawDueum)
-                if decoded then DueumMap = decoded end
-            end)
-        end
+checkWhitelistValid()
 
-        local raw = downloadData(urls.dictUrl)
-        if raw then
-            local success, decodedWords = pcall(function() return HttpService:JSONDecode(raw) end)
-            if success and type(decodedWords) == "table" then
-                for _, cleaned in ipairs(decodedWords) do
-                    if cleaned ~= "" and #cleaned > 1 then 
-                        table.insert(WordDB, cleaned) 
-                        MainDictMap[cleaned] = true
-                    end
+task.spawn(function()
+    local rawDueum = downloadData(urls.dueumUrl)
+    if rawDueum then
+        pcall(function()
+            local decoded = HttpService:JSONDecode(rawDueum)
+            if decoded then DueumMap = decoded end
+        end)
+    end
+
+    local raw = downloadData(urls.dictUrl)
+    if raw then
+        local success, decodedWords = pcall(function() return HttpService:JSONDecode(raw) end)
+        if success and type(decodedWords) == "table" then
+            for _, cleaned in ipairs(decodedWords) do
+                if cleaned ~= "" and #cleaned > 1 then 
+                    table.insert(WordDB, cleaned) 
+                    MainDictMap[cleaned] = true
                 end
-            else
-                for word in string.gmatch(raw, '"([^"]+)"') do
-                    if word ~= "" and #word > 1 then
-                        table.insert(WordDB, word)
-                        MainDictMap[word] = true
-                    end
+            end
+        else
+            for word in string.gmatch(raw, '"([^"]+)"') do
+                if word ~= "" and #word > 1 then
+                    table.insert(WordDB, word)
+                    MainDictMap[word] = true
                 end
             end
         end
-        table.sort(WordDB)
-        
-        initializeWindUIWindow()
-    end)
-end
+    end
+    table.sort(WordDB)
+    
+    initializeWindUIWindow()
+end)
 
