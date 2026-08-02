@@ -1,5 +1,5 @@
 -- =============================================================================
--- [Gravel.cc x 끄글 매크로] 통합 제어 엔진 (단어 DB 형식 완벽 대응 및 최적화 버전)
+-- [Gravel.cc x 끄글 매크로] 통합 제어 엔진 (비동기 청크 분할 및 렉 방지 버전)
 -- =============================================================================
 
 local isRobloxEnv = pcall(function() return game:GetService("CoreGui") end)
@@ -183,7 +183,7 @@ local function buildTypeStates(word)
 end
 
 -- =============================================================================
--- [3] 사전 데이터 및 파서 초기화 (따옴표/쉼표 포맷 정규식 파싱)
+-- [3] 사전 데이터 및 파서 초기화
 -- =============================================================================
 local WordDB = {}
 local MainDictMap = {} 
@@ -466,7 +466,7 @@ local function initializeWindUIWindow()
             emptyLabel.Parent = Scroller
             Scroller.CanvasSize = UDim2.new(0, 0, 0, 40)
         else
-            local maxDisplay = #matched
+            local maxDisplay = math.min(#matched, 100) -- UI 렌더링 최적화
             for i = 1, maxDisplay do
                 local targetW = matched[i]
                 local wordBtn = Instance.new("TextButton")
@@ -838,7 +838,7 @@ local function initializeWindUIWindow()
 end
 
 -- =============================================================================
--- [4.5] 프로그레스 바 로딩 화면 구현 함수 추가
+-- [4.5] 프로그레스 바 로딩 화면 구현 함수 추가 (비동기 청크 파싱 적용)
 -- =============================================================================
 local function runLoadingSequence()
     local LoadingScreenGui = Instance.new("ScreenGui")
@@ -890,7 +890,7 @@ local function runLoadingSequence()
 
     local isDataDownloaded = false
     task.spawn(function()
-        StatusLabel.Text = "Downloading Core Dictionaries & Dueum Maps..."
+        StatusLabel.Text = "Downloading Core Dictionaries..."
         local rawDueum = downloadData(urls.dueumUrl)
         if rawDueum then
             pcall(function()
@@ -901,25 +901,40 @@ local function runLoadingSequence()
 
         local raw = downloadData(urls.dictUrl)
         if raw then
+            StatusLabel.Text = "Parsing Dictionaries (Non-blocking)..."
+            
+            -- 대용량 텍스트 단어들을 한 번에 파싱하면 렉(프레임 드랍)이 발생하므로 청크 단위로 나누어 비동기 처리
+            local tempWords = {}
             for cleanWord in raw:gmatch('["\'](.-)["\']') do
                 cleanWord = cleanWord:match("^%s*(.-)%s*$")
                 if cleanWord ~= "" and utf8.len(cleanWord) > 1 then 
-                    table.insert(WordDB, cleanWord) 
-                    MainDictMap[cleanWord] = true
+                    table.insert(tempWords, cleanWord) 
                 end
             end
             
-            if #WordDB == 0 then
+            if #tempWords == 0 then
                 for line in raw:gmatch("[^\r\n]+") do
                     local cleaned = line:match("^%s*(.-)%s*$")
                     cleaned = cleaned:gsub('^["\']', ''):gsub('["\']$', ''):gsub(',$', '')
                     if cleaned ~= "" and utf8.len(cleaned) > 1 then 
-                        table.insert(WordDB, cleaned) 
-                        MainDictMap[cleaned] = true
+                        table.insert(tempWords, cleaned) 
                     end
                 end
             end
+
+            -- 부하 분산을 위한 청크 단위 파싱 적용
+            local chunkSize = 2500
+            for i = 1, #tempWords, chunkSize do
+                for j = i, math.min(i + chunkSize - 1, #tempWords) do
+                    local w = tempWords[j]
+                    table.insert(WordDB, w)
+                    MainDictMap[w] = true
+                end
+                task.wait() -- 프레임 양보를 통해 렉 원천 방지
+            end
         end
+        
+        StatusLabel.Text = "Sorting Word Database..."
         table.sort(WordDB)
         isDataDownloaded = true
     end)
