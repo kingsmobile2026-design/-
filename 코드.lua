@@ -1,8 +1,7 @@
 -- =============================================================================
--- [Gravel.cc x 끄글 매크로] 통합 제어 엔진 (최종 호환성 안정화 버전)
+-- [Gravel.cc x 끄글 매크로] 통합 제어 엔진 (단어 DB 형식 완벽 대응 및 최적화 버전)
 -- =============================================================================
 
--- [1] 브라우저 직접 접속 차단 및 실행기 환경 검사 완화
 local isRobloxEnv = pcall(function() return game:GetService("CoreGui") end)
 if not isRobloxEnv and not game:GetService("RunService"):IsClient() then
     error("Unauthorized Web Request")
@@ -21,7 +20,6 @@ local _lp = Players.LocalPlayer
 local localPlayer = _lp
 local targetGuiParent = _lp:WaitForChild("PlayerGui")
 
--- [전역 설정 구조체]
 shared.config = shared.config or {
     winStreak = 0,
     autoSaveEnabled = true,
@@ -69,20 +67,12 @@ local function downloadData(url)
     return ok and res or nil 
 end
 
--- [★ PolSec 키 시스템 완벽 연동 패치]
 local function checkWhitelistValid()
-    local pKey = _G.Script_key or _G.script_key or Script_key or script_key
-    if pKey and pKey ~= "%K".."EY%" and pKey ~= "" then
-        UserRank = "Premium"
-        return true
-    end
-
     local whiteRaw = downloadData(urls.whitelistUrl)
     if whiteRaw and whiteRaw:find(tostring(_lp.UserId)) then
         UserRank = "Premium"
         return true
     end
-    
     UserRank = "Normal"
     return true 
 end
@@ -193,7 +183,7 @@ local function buildTypeStates(word)
 end
 
 -- =============================================================================
--- [3] 사전 데이터 및 기타 보조 함수 정의
+-- [3] 사전 데이터 및 파서 초기화 (따옴표/쉼표 포맷 정규식 파싱)
 -- =============================================================================
 local WordDB = {}
 local MainDictMap = {} 
@@ -476,21 +466,9 @@ local function initializeWindUIWindow()
             emptyLabel.Parent = Scroller
             Scroller.CanvasSize = UDim2.new(0, 0, 0, 40)
         else
-            -- 프리미엄 미지급 유저 대상 제한 및 프레임 뚝뚝 끊기는 생성 렉 부하 제어 패치 적용
-            local targetList = matched
-            if UserRank ~= "Premium" then
-                local limitedMatched = {}
-                math.randomseed(os.time())
-                for _, word in ipairs(matched) do
-                    if math.random(1, 100) <= 50 then table.insert(limitedMatched, word) end
-                end
-                targetList = limitedMatched
-            end
-
-            -- 최대 표시 개수 제한하여 엄청난 양의 단어 버튼 동시 렌더링 폭탄 차단 (프레임 유지용 핵심 조치)
-            local maxDisplay = math.min(#targetList, 60)
+            local maxDisplay = #matched
             for i = 1, maxDisplay do
-                local targetW = targetList[i]
+                local targetW = matched[i]
                 local wordBtn = Instance.new("TextButton")
                 wordBtn.Size = UDim2.new(1, 0, 0, 24)
                 wordBtn.BackgroundTransparency = 1
@@ -508,21 +486,7 @@ local function initializeWindUIWindow()
                 end)
             end
 
-            local finalCount = maxDisplay
-            if UserRank ~= "Premium" then
-                local premiumLockLabel = Instance.new("TextLabel")
-                premiumLockLabel.Size = UDim2.new(1, 0, 0, 24)
-                premiumLockLabel.BackgroundTransparency = 1
-                premiumLockLabel.Text = "🔒 더 많은 단어 목록 조회를 위해선 프리미엄 필요"
-                premiumLockLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
-                premiumLockLabel.Font = Enum.Font.GothamBold
-                premiumLockLabel.TextSize = 11
-                premiumLockLabel.TextXAlignment = Enum.TextXAlignment.Left
-                premiumLockLabel.Parent = Scroller
-                finalCount = finalCount + 1
-            end
-
-            Scroller.CanvasSize = UDim2.new(0, 0, 0, finalCount * 28)
+            Scroller.CanvasSize = UDim2.new(0, 0, 0, maxDisplay * 28)
         end
     end
 
@@ -773,7 +737,7 @@ local function initializeWindUIWindow()
     })
 
     -- =========================================================================
-    -- [제시어 자동 동기화 엔진] (★ GetDescendants 전수조사 연산 삭제 -> GameGui 고정 타겟팅으로 부하 0% 패치 완료)
+    -- [제시어 자동 동기화 엔진 - 변경될 때 딱 1번만 탐지하여 렉 제거]
     -- =========================================================================
     task.spawn(function()
         local function processFoundLetter(ch)
@@ -834,13 +798,13 @@ local function initializeWindUIWindow()
             end
         end
 
-        while task.wait(0.25) do
+        local lastDetectedLetter = ""
+        while task.wait(0.35) do
             pcall(function()
                 local foundLetter = nil
                 local pGui = localPlayer:FindFirstChildOfClass("PlayerGui")
                 local gameGui = pGui and pGui:FindFirstChild("GameGui")
                 
-                -- 무차별적 전수조사(GetDescendants)를 전부 걷어내고 명확히 분리된 UI 패스만 직접 포인팅
                 if gameGui then
                     local triesFrame = gameGui:FindFirstChild("TriesFrame")
                     local tipLabel = triesFrame and triesFrame:FindFirstChild("SpectatorTipLabel") or gameGui:FindFirstChild("TipLabel")
@@ -858,8 +822,13 @@ local function initializeWindUIWindow()
                     end
                 end
 
-                if foundLetter and utf8.len(foundLetter) == 1 and foundLetter ~= _lt then
-                    processFoundLetter(foundLetter)
+                if foundLetter and utf8.len(foundLetter) == 1 then
+                    if foundLetter ~= lastDetectedLetter then
+                        lastDetectedLetter = foundLetter
+                        processFoundLetter(foundLetter)
+                    end
+                else
+                    lastDetectedLetter = ""
                 end
             end)
         end
@@ -932,19 +901,21 @@ local function runLoadingSequence()
 
         local raw = downloadData(urls.dictUrl)
         if raw then
-            local success, decodedWords = pcall(function() return HttpService:JSONDecode(raw) end)
-            if success and type(decodedWords) == "table" then
-                for _, cleaned in ipairs(decodedWords) do
-                    if cleaned ~= "" and #cleaned > 1 then 
+            for cleanWord in raw:gmatch('["\'](.-)["\']') do
+                cleanWord = cleanWord:match("^%s*(.-)%s*$")
+                if cleanWord ~= "" and utf8.len(cleanWord) > 1 then 
+                    table.insert(WordDB, cleanWord) 
+                    MainDictMap[cleanWord] = true
+                end
+            end
+            
+            if #WordDB == 0 then
+                for line in raw:gmatch("[^\r\n]+") do
+                    local cleaned = line:match("^%s*(.-)%s*$")
+                    cleaned = cleaned:gsub('^["\']', ''):gsub('["\']$', ''):gsub(',$', '')
+                    if cleaned ~= "" and utf8.len(cleaned) > 1 then 
                         table.insert(WordDB, cleaned) 
                         MainDictMap[cleaned] = true
-                    end
-                end
-            else
-                for word in string.gmatch(raw, '"([^"]+)"') do
-                    if word ~= "" and #word > 1 then
-                        table.insert(WordDB, word)
-                        MainDictMap[word] = true
                     end
                 end
             end
