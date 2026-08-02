@@ -41,7 +41,7 @@ local currentTypeSession = 0
 
 local urls = {
     ilikedisui = "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua",
-    dictUrl = "https://raw.githubusercontent.com/kingsmobile2026-design/--/refs/heads/main/korean%20wordDB.txt",
+    dictUrl = "https://raw.githubusercontent.com/kingsmobile2026-design/--/refs/heads/main/%EB%81%84%EA%B8%80_%EB%8B%A8%EC%96%B4%20%EB%AA%A9%EB%A1%9D_20260731210345.txt",
     dueumUrl = "https://gist.githubusercontent.com/GUMI2029/a98de0291fe638cc37bd6125edc71aac/raw/dueum_map.json",
     whitelistUrl = "https://raw.githubusercontent.com/kingsmobile2026-design/000/refs/heads/main/%ED%85%8C%EC%8A%A4%ED%8A%B8"
 }
@@ -862,7 +862,7 @@ local function initializeWindUIWindow()
 end
 
 -- =============================================================================
--- [4.5] 프로그레스 바 로딩 화면 구현 함수 추가
+-- [4.5] 프로그레스 바 로딩 화면 구현 함수 추가 (★스레드 부하 분산 및 프리징 현상 수정 완료)
 -- =============================================================================
 local function runLoadingSequence()
     local LoadingScreenGui = Instance.new("ScreenGui")
@@ -912,6 +912,8 @@ local function runLoadingSequence()
     local totalLength = 30
     TextProgressBar.Text = "[" .. string.rep(" ", totalLength) .. "]"
 
+    -- [핵심 수정 위젯: 비동기 데이터 갱신 구조화 및 순차 락 해제 메커니즘]
+    local isDataDownloaded = false
     task.spawn(function()
         StatusLabel.Text = "Downloading Core Dictionaries & Dueum Maps..."
         local rawDueum = downloadData(urls.dueumUrl)
@@ -942,32 +944,46 @@ local function runLoadingSequence()
             end
         end
         table.sort(WordDB)
+        isDataDownloaded = true
     end)
 
-    local currentFilled = 0
-    for i = 1, totalLength do
-        currentFilled = i
-        local filledPart = string.rep("|", currentFilled)
-        local emptyPart = string.rep(" ", totalLength - currentFilled)
-        TextProgressBar.Text = "[" .. filledPart .. emptyPart .. "]"
-        StatusLabel.Text = "Injecting Typing Automata Node... " .. math.floor((i/totalLength)*100) .. "%"
-        task.wait(0.04)
-    end
+    -- 부하를 분산시키기 위해 메인 스레드 대기 프레임 적용 루프 제어
+    task.spawn(function()
+        local currentFilled = 0
+        for i = 1, totalLength do
+            currentFilled = i
+            local filledPart = string.rep("|", currentFilled)
+            local emptyPart = string.rep(" ", totalLength - currentFilled)
+            TextProgressBar.Text = "[" .. filledPart .. emptyPart .. "]"
+            StatusLabel.Text = "Injecting Typing Automata Node... " .. math.floor((i/totalLength)*100) .. "%"
+            task.wait(0.04)
+        end
 
-    TweenService:Create(MainBackground, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
-    TweenService:Create(TitleLabel, TweenInfo.new(0.2), {TextTransparency = 1}):Play()
-    TweenService:Create(TextProgressBar, TweenInfo.new(0.2), {TextTransparency = 1}):Play()
-    local fade = TweenService:Create(StatusLabel, TweenInfo.new(0.2), {TextTransparency = 1})
-    if fade then fade:Play() fade.Completed:Wait() end
+        -- 대량 데이터 정렬 처리가 온전히 끝날 때까지 스레드 동기화 락 대기
+        while not isDataDownloaded do
+            task.wait(0.05)
+        end
 
-    LoadingScreenGui:Destroy()
-    initializeWindUIWindow()
+        TweenService:Create(MainBackground, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
+        TweenService:Create(TitleLabel, TweenInfo.new(0.2), {TextTransparency = 1}):Play()
+        TweenService:Create(TextProgressBar, TweenInfo.new(0.2), {TextTransparency = 1}):Play()
+        local fade = TweenService:Create(StatusLabel, TweenInfo.new(0.2), {TextTransparency = 1})
+        if fade then 
+            fade:Play() 
+            fade.Completed:Wait() 
+        end
+
+        LoadingScreenGui:Destroy()
+        initializeWindUIWindow()
+    end)
 end
 
 -- =============================================================================
 -- [최종 구동 게이트]
 -- =============================================================================
-if checkWhitelistValid() then
-    task.spawn(runLoadingSequence)
-end
+task.spawn(function()
+    if checkWhitelistValid() then
+        runLoadingSequence()
+    end
+end)
 
