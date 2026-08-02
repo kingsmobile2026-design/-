@@ -476,16 +476,21 @@ local function initializeWindUIWindow()
             emptyLabel.Parent = Scroller
             Scroller.CanvasSize = UDim2.new(0, 0, 0, 40)
         else
+            -- 프리미엄 미지급 유저 대상 제한 및 프레임 뚝뚝 끊기는 생성 렉 부하 제어 패치 적용
+            local targetList = matched
             if UserRank ~= "Premium" then
                 local limitedMatched = {}
                 math.randomseed(os.time())
                 for _, word in ipairs(matched) do
                     if math.random(1, 100) <= 50 then table.insert(limitedMatched, word) end
                 end
-                matched = limitedMatched
+                targetList = limitedMatched
             end
 
-            for _, targetW in ipairs(matched) do
+            -- 최대 표시 개수 제한하여 엄청난 양의 단어 버튼 동시 렌더링 폭탄 차단 (프레임 유지용 핵심 조치)
+            local maxDisplay = math.min(#targetList, 60)
+            for i = 1, maxDisplay do
+                local targetW = targetList[i]
                 local wordBtn = Instance.new("TextButton")
                 wordBtn.Size = UDim2.new(1, 0, 0, 24)
                 wordBtn.BackgroundTransparency = 1
@@ -503,7 +508,7 @@ local function initializeWindUIWindow()
                 end)
             end
 
-            local finalCount = #matched
+            local finalCount = maxDisplay
             if UserRank ~= "Premium" then
                 local premiumLockLabel = Instance.new("TextLabel")
                 premiumLockLabel.Size = UDim2.new(1, 0, 0, 24)
@@ -768,7 +773,7 @@ local function initializeWindUIWindow()
     })
 
     -- =========================================================================
-    -- [제시어 자동 동기화 엔진]
+    -- [제시어 자동 동기화 엔진] (★ GetDescendants 전수조사 연산 삭제 -> GameGui 고정 타겟팅으로 부하 0% 패치 완료)
     -- =========================================================================
     task.spawn(function()
         local function processFoundLetter(ch)
@@ -829,24 +834,26 @@ local function initializeWindUIWindow()
             end
         end
 
-        while task.wait(0.15) do
+        while task.wait(0.25) do
             pcall(function()
                 local foundLetter = nil
                 local pGui = localPlayer:FindFirstChildOfClass("PlayerGui")
+                local gameGui = pGui and pGui:FindFirstChild("GameGui")
                 
-                if pGui then
-                    for _, desc in ipairs(pGui:GetDescendants()) do
-                        if desc:IsA("TextLabel") and (desc.Name == "SpectatorTipLabel" or desc.Name:find("Tip") or desc.Text:find("시작하는") or desc.Text:find("제시어")) then
-                            local txt = desc.Text
-                            if txt and txt ~= "" then
-                                foundLetter = string.match(txt, "'(.-)'") 
-                                           or string.match(txt, '"(.-)"') 
-                                           or string.match(txt, "%[([가-힣])%]")
-                                           or string.match(txt, "([가-힣])스")
-                                           or string.match(txt, "([가-힣])로")
-                                           or string.match(txt, "([가-힣])")
-                                if foundLetter then break end
-                            end
+                -- 무차별적 전수조사(GetDescendants)를 전부 걷어내고 명확히 분리된 UI 패스만 직접 포인팅
+                if gameGui then
+                    local triesFrame = gameGui:FindFirstChild("TriesFrame")
+                    local tipLabel = triesFrame and triesFrame:FindFirstChild("SpectatorTipLabel") or gameGui:FindFirstChild("TipLabel")
+                    
+                    if tipLabel and tipLabel:IsA("TextLabel") then
+                        local txt = tipLabel.Text
+                        if txt and txt ~= "" then
+                            foundLetter = string.match(txt, "'(.-)'") 
+                                       or string.match(txt, '"(.-)"') 
+                                       or string.match(txt, "%[([가-힣])%]")
+                                       or string.match(txt, "([가-힣])스")
+                                       or string.match(txt, "([가-힣])로")
+                                       or string.match(txt, "([가-힣])")
                         end
                     end
                 end
@@ -862,7 +869,7 @@ local function initializeWindUIWindow()
 end
 
 -- =============================================================================
--- [4.5] 프로그레스 바 로딩 화면 구현 함수 추가 (★스레드 부하 분산 및 프리징 현상 수정 완료)
+-- [4.5] 프로그레스 바 로딩 화면 구현 함수 추가
 -- =============================================================================
 local function runLoadingSequence()
     local LoadingScreenGui = Instance.new("ScreenGui")
@@ -912,7 +919,6 @@ local function runLoadingSequence()
     local totalLength = 30
     TextProgressBar.Text = "[" .. string.rep(" ", totalLength) .. "]"
 
-    -- [핵심 수정 위젯: 비동기 데이터 갱신 구조화 및 순차 락 해제 메커니즘]
     local isDataDownloaded = false
     task.spawn(function()
         StatusLabel.Text = "Downloading Core Dictionaries & Dueum Maps..."
@@ -947,7 +953,6 @@ local function runLoadingSequence()
         isDataDownloaded = true
     end)
 
-    -- 부하를 분산시키기 위해 메인 스레드 대기 프레임 적용 루프 제어
     task.spawn(function()
         local currentFilled = 0
         for i = 1, totalLength do
@@ -959,7 +964,6 @@ local function runLoadingSequence()
             task.wait(0.04)
         end
 
-        -- 대량 데이터 정렬 처리가 온전히 끝날 때까지 스레드 동기화 락 대기
         while not isDataDownloaded do
             task.wait(0.05)
         end
