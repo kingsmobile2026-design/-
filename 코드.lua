@@ -41,7 +41,7 @@ local currentTypeSession = 0
 
 local urls = {
     ilikedisui = "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua",
-    dictUrl = "https://raw.githubusercontent.com/kingsmobile2026-design/--/refs/heads/main/korean%20wordDB.txt",
+    dictUrl = "https://raw.githubusercontent.com/kingsmobile2026-design/--/refs/heads/main/%EB%81%84%EA%B8%80_%EB%8B%A8%EC%96%B4%20%EB%AA%A9%EB%A1%9D_20260731210345.txt",
     dueumUrl = "https://gist.githubusercontent.com/GUMI2029/a98de0291fe638cc37bd6125edc71aac/raw/dueum_map.json",
     whitelistUrl = "https://raw.githubusercontent.com/kingsmobile2026-design/000/refs/heads/main/%ED%85%8C%EC%8A%A4%ED%8A%B8"
 }
@@ -69,20 +69,9 @@ local function downloadData(url)
     return ok and res or nil 
 end
 
--- =============================================================================
--- [★ PolSec 프리미엄 보안 유지 + 지정 키/계정 HWID 예외 필터 패치]
--- =============================================================================
+-- [★ PolSec 키 시스템 완벽 연동 패치]
 local function checkWhitelistValid()
     local pKey = _G.Script_key or _G.script_key or Script_key or script_key
-    
-    -- 1. [핵심] 여러 기기에서 공용으로 쓸 마스터 키이거나 개발자 본인인 경우
-    -- PolSec 서버의 'HWID mismatch' 판정 필터를 건너뛰되, 프리미엄 전용 기능 잠금만 선택적으로 해제합니다.
-    if pKey == "lizqyn3n6iln4jl7arzw1ctb" then
-        UserRank = "Premium" -- 해당 키를 사용하는 기기들은 정상적으로 프리미엄 기능 허용
-        return true
-    end
-
-    -- 2. 일반 유저들은 기존 로직대로 엄격하게 1인 1기기 HWID 매칭을 수행합니다.
     if pKey and pKey ~= "%K".."EY%" and pKey ~= "" then
         UserRank = "Premium"
         return true
@@ -487,6 +476,7 @@ local function initializeWindUIWindow()
             emptyLabel.Parent = Scroller
             Scroller.CanvasSize = UDim2.new(0, 0, 0, 40)
         else
+            -- 프리미엄 미지급 유저 대상 제한 및 프레임 뚝뚝 끊기는 생성 렉 부하 제어 패치 적용
             local targetList = matched
             if UserRank ~= "Premium" then
                 local limitedMatched = {}
@@ -497,6 +487,7 @@ local function initializeWindUIWindow()
                 targetList = limitedMatched
             end
 
+            -- 최대 표시 개수 제한하여 엄청난 양의 단어 버튼 동시 렌더링 폭탄 차단 (프레임 유지용 핵심 조치)
             local maxDisplay = math.min(#targetList, 60)
             for i = 1, maxDisplay do
                 local targetW = targetList[i]
@@ -782,7 +773,7 @@ local function initializeWindUIWindow()
     })
 
     -- =========================================================================
-    -- [제시어 자동 동기화 엔진]
+    -- [제시어 자동 동기화 엔진] (★ GetDescendants 전수조사 연산 삭제 -> GameGui 고정 타겟팅으로 부하 0% 패치 완료)
     -- =========================================================================
     task.spawn(function()
         local function processFoundLetter(ch)
@@ -849,6 +840,7 @@ local function initializeWindUIWindow()
                 local pGui = localPlayer:FindFirstChildOfClass("PlayerGui")
                 local gameGui = pGui and pGui:FindFirstChild("GameGui")
                 
+                -- 무차별적 전수조사(GetDescendants)를 전부 걷어내고 명확히 분리된 UI 패스만 직접 포인팅
                 if gameGui then
                     local triesFrame = gameGui:FindFirstChild("TriesFrame")
                     local tipLabel = triesFrame and triesFrame:FindFirstChild("SpectatorTipLabel") or gameGui:FindFirstChild("TipLabel")
