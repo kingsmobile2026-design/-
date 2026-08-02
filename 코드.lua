@@ -41,7 +41,7 @@ local currentTypeSession = 0
 
 local urls = {
     ilikedisui = "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua",
-    dictUrl = "https://raw.githubusercontent.com/kingsmobile2026-design/--/refs/heads/main/%EB%81%84%EA%B8%80_%EB%8B%A8%EC%96%B4%20%EB%AA%A9%EB%A1%9D_20260731210345.txt",
+    dictUrl = "https://raw.githubusercontent.com/kingsmobile2026-design/--/refs/heads/main/korean%20wordDB.txt",
     dueumUrl = "https://gist.githubusercontent.com/GUMI2029/a98de0291fe638cc37bd6125edc71aac/raw/dueum_map.json",
     whitelistUrl = "https://raw.githubusercontent.com/kingsmobile2026-design/000/refs/heads/main/%ED%85%8C%EC%8A%A4%ED%8A%B8"
 }
